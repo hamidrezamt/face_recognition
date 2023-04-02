@@ -565,7 +565,7 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        # cap = cv2.VideoCapture("test_final.mp4")  # Get video stream from video file
+        # cap = cv2.VideoCapture("data/test_final.mp4")  # Get video stream from video file
         cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # self.cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
