@@ -13,6 +13,7 @@ from imutils import face_utils
 from scipy.spatial import distance as dist
 import head_pose_estimation as hpe
 from datetime import datetime
+from win_serveice import SMWinservice
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -573,16 +574,26 @@ class Face_Recognizer:
         cap.release()
         cv2.destroyAllWindows()
 
+class PythonCornerExample(SMWinservice):
+    _svc_name_ = "face_recognition"
+    _svc_display_name_ = "face recognition"
+    _svc_description_ = "face recognition app"
 
-def main():
-    # logging.basicConfig(level=logging.DEBUG) # Set log level to 'logging.DEBUG' to print debug info of every frame
-    logging.basicConfig(filename="log.txt", filemode="w", force=True)
-    logger = logging.getLogger()  # Let us Create an object
-    logger.setLevel(logging.DEBUG)
-    # logging.basicConfig(level=logging.INFO)
-    Face_Recognizer_con = Face_Recognizer()
-    Face_Recognizer_con.run()
+    def start(self):
+        self.isrunning = True
 
+    def stop(self):
+        self.isrunning = False
+
+    def main(self):
+        while self.isrunning:
+            # logging.basicConfig(level=logging.DEBUG) # Set log level to 'logging.DEBUG' to print debug info of every frame
+            logging.basicConfig(filename="log.txt", filemode="w", force=True)
+            logger = logging.getLogger()  # Let us Create an object
+            logger.setLevel(logging.DEBUG)
+            # logging.basicConfig(level=logging.INFO)
+            Face_Recognizer_con = Face_Recognizer()
+            Face_Recognizer_con.run()
 
 if __name__ == '__main__':
-    main()
+    PythonCornerExample.parse_command_line()
