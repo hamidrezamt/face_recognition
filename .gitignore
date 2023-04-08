@@ -134,7 +134,8 @@ debug/*
 __pycache__/
 
 # exception to the rule
-!data/.gitkeep 
+!data/.gitkeep
+!data/data_dlib/.gitkeep 
 !debug/.gitkeep 
 
 #.DS_Store  files
