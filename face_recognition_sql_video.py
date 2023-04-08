@@ -31,8 +31,7 @@ database_name = "dlib_face"
 charset = "utf8mb4"
 cusror_type = pymysql.cursors.DictCursor
 
-database = pymysql.connect(host=database_server_name, user=database_user, password=database_password, db=database_name,
-                           charset=charset, cursorclass=cusror_type)
+database = pymysql.connect(host=database_server_name, user=database_user, password=database_password, db=database_name, charset=charset, cursorclass=cusror_type)
 cursor = database.cursor()
 
 
@@ -92,6 +91,8 @@ class Face_Recognizer:
         self.y_direction_thresh = 18.0  # 15.0
         self.x_direction_thresh = 30.0  # 17.0
         self.dimesion_thresh = 160
+        self.once = True
+        self.first_faces = 0
         ########################################################################################
 
     #  Mkdir for saving photos and csv
@@ -311,8 +312,10 @@ class Face_Recognizer:
 
 
     def face_capturer(self, image, face, phase = None, index = None):
-        if phase is not None and phase == 0:  # if there is no face in database phase is 0
+        if phase is not None and phase == 0 and self.first_faces > 0:  # if there is no face in database phase is 0
             self.current_frame_face_name_list.append("unknown")
+            logging.debug("  self.first_faces: " + str(self.first_faces) )
+            self.first_faces = self.first_faces - 1
 
         shape = predictor(image, face)
         height = (face.bottom() - face.top())
@@ -393,13 +396,13 @@ class Face_Recognizer:
 
     # Using Centroid Tracking to Recognize Faces; Use centroid tracker to link face_x in current frame with person_x in last frame
     def centroid_tracker(self):
-        # logging.debug("  inside centroid_tracker!")
-        # logging.debug("  self.last_frame_face_name_list: " + str(self.last_frame_face_name_list))
-        # logging.debug("  self.current_frame_face_name_list: " + str(self.current_frame_face_name_list))
+        logging.debug("  inside centroid_tracker!")
+        logging.debug("  self.last_frame_face_name_list: " + str(self.last_frame_face_name_list))
+        logging.debug("  self.current_frame_face_name_list: " + str(self.current_frame_face_name_list))
         for i in range(len(self.current_frame_face_centroid_list)):
-            # logging.debug("  inside for inside centroid_tracker!")
-            # logging.debug("  self.current_frame_face_centroid_list: " + str(self.current_frame_face_centroid_list))
-            # logging.debug("  self.last_frame_face_centroid_list: " + str(self.last_frame_face_centroid_list))
+            logging.debug("  inside for inside centroid_tracker!")
+            logging.debug("  self.current_frame_face_centroid_list: " + str(self.current_frame_face_centroid_list))
+            logging.debug("  self.last_frame_face_centroid_list: " + str(self.last_frame_face_centroid_list))
             e_distance_current_frame_person_x_list = []
             # For object 1 in current_frame, compute e-distance with object 1/2/3/4/... in last frame
             for j in range(len(self.last_frame_face_centroid_list)):
@@ -409,8 +412,7 @@ class Face_Recognizer:
                 # logging.debug("  e_distance_current_frame_person_x_list: " + str(e_distance_current_frame_person_x_list))
 
             last_frame_num = e_distance_current_frame_person_x_list.index(min(e_distance_current_frame_person_x_list))
-            # logging.debug("last_frame_num ")
-            # logging.debug(last_frame_num)
+            logging.debug("  last_frame_num: " + str(last_frame_num))
             self.current_frame_face_name_list[i] = self.last_frame_face_name_list[last_frame_num]
 
     # Add explanatory text on the cv2 window
@@ -540,6 +542,9 @@ class Face_Recognizer:
             else:
                 # Face detected
                 logging.debug("  there is no face in database")
+                #  Update the list of centroids for the previous frame and the current frame
+                self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
+                self.current_frame_face_centroid_list = []
                 if len(faces) != 0:
                     # Create folders to save photos
                     self.pre_work_mkdir()
@@ -552,6 +557,9 @@ class Face_Recognizer:
 
                     # Show the ROI of faces
                     for k, d in enumerate(faces):
+                        if self.once:
+                            self.first_faces = len(faces)
+                            self.once = False
                         self.face_capturer(img_rd, d, phase = 0)
 
             # 8. Press 'q' to exit
@@ -565,8 +573,8 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        cap = cv2.VideoCapture("data/test_final.mp4")  # Get video stream from video file
-        # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
+        # cap = cv2.VideoCapture("test.mp4")  # Get video stream from video file
+        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # self.cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
 
