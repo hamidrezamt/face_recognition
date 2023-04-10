@@ -2,6 +2,8 @@
 SMWinservice
 by Davide Mastromatteo
 
+Tutorial : https://thepythoncorner.com/posts/2018-08-01-how-to-create-a-windows-service-in-python/
+
 Base class to create winservice in Python
 -----------------------------------------
 

@@ -83,12 +83,19 @@ def return_features_mean_personX(path_face_personX, id):
         logging.warning("  Warning: No images in%s/", path_face_personX)
 
 
+    # cursor.execute("SELECT * FROM `person_features` WHERE `person_id` = " + str(id) + ";")
+    # feature_list_temp = cursor.fetchall()
+    # for i in range(len(feature_list_temp)):
+    #     features = list(feature_list_temp[i].values())[4:]
+    #     features = [float(feature) for feature in features]
+    #     features_list_personX.append(features)
+
     cursor.execute("SELECT * FROM `person_features` WHERE `person_id` = " + str(id) + ";")
     feature_list_temp = cursor.fetchall()
-    for i in range(len(feature_list_temp)):
-        features = list(feature_list_temp[i].values())[4:]
-        features = [float(feature) for feature in features]
-        features_list_personX.append(features)
+    print(type(feature_list_temp))
+    print(type(feature_list_temp[0]))
+    print(feature_list_temp)
+    feature = list(feature_list_temp[len(feature_list_temp)-1].values())[2]
     
 
     # # Compute the mean
@@ -99,7 +106,7 @@ def return_features_mean_personX(path_face_personX, id):
     #     features_mean_personX = np.zeros(128, dtype=object, order='C')
     # return features_mean_personX
     db.commit()
-    print(features_list_personX)
+    print(feature)
 
 
 def check_existing_faces_cnt():

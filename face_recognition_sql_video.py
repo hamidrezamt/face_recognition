@@ -24,16 +24,10 @@ predictor = dlib.shape_predictor('data/data_dlib/shape_predictor_68_face_landmar
 face_reco_model = dlib.face_recognition_model_v1("data/data_dlib/dlib_face_recognition_resnet_model_v1.dat")
 
 # Create a connection object
-database_server_name = "localhost"
-database_user = "hamidreza"
-database_password = "@123HrmZ123$"
-database_name = "dlib_face"
-charset = "utf8mb4"
-cusror_type = pymysql.cursors.DictCursor
+connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
 
-database = pymysql.connect(host=database_server_name, user=database_user, password=database_password, db=database_name, charset=charset, cursorclass=cusror_type)
+database = pymysql.connect(**connection_params)
 cursor = database.cursor()
-
 
 class Face_Recognizer:
     def __init__(self):
@@ -117,31 +111,36 @@ class Face_Recognizer:
         else:
             self.existing_faces_cnt = 0
 
-    def feature_extraction_csv(self):
-        # 0. clear table in mysql
-        # cursor.execute("TRUNCATE TABLE `person_features`;")
-        # logging.debug("TRUNCATE TABLE `person_features`;")
-        cursor.execute("TRUNCATE TABLE `mean_person_features`;")
-        logging.debug("  TRUNCATE TABLE `mean_person_features`;")
+    def feature_extraction(self, index):
 
         # 1. check existing people in mysql
-        cursor.execute("SELECT COUNT(*) FROM `mean_person_features`;")
-        person_start = int(cursor.fetchall()[0]["COUNT(*)"])
+        cursor.execute("SELECT * FROM `mean_person_features`;")
+        results = cursor.fetchall()
+        person_start = len(results)
         logging.debug("  person_start: " + str(person_start))
         self.check_existing_faces_cnt()
         logging.debug("  self.existing_faces_cnt: " + str(self.existing_faces_cnt))
-        for person in range(self.existing_faces_cnt):
-            # Get the mean/average features of face/personX, it will be a list with a length of 128D
-            features_mean_personX = self.return_features_mean_personX(self.path_photos_from_camera + "person_" + str(person + 1), person + 1)
 
-            # 2. Insert person 1 to person X
-            cursor.execute("INSERT INTO `mean_person_features` (`person_id`) VALUES(" + str(person + 1) + ");")
-            logging.debug("  INSERT INTO `mean_person_features` (`person_id`) VALUES(" + str(person + 1) + ");")
+        # Get the mean/average features of face/personX, it will be a list with a length of 128D
+        features_mean_personX, counter_up = self.return_features_mean_personX(self.path_photos_from_camera + "person_" + str(index + 1), index + 1)
 
-            # 3. Insert features for person X
-            for i in range(128):
-                cursor.execute("UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(person + 1) + ";")
-                logging.debug("  UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(person + 1) + ";")
+        if person_start and person_start == self.existing_faces_cnt:
+            # 2.1 Update person 1 to person X
+            current_counter = list(results[index].values())[1]
+            logging.debug("  current counter: " + str(current_counter))
+            if counter_up:
+                cursor.execute("UPDATE `mean_person_features` SET `counter` = " + str(current_counter + 1) + " WHERE `person_id` =" + str(index + 1) + ";")
+                logging.debug("  UPDATE `mean_person_features` SET `counter` = " + str(current_counter + 1) + " WHERE `person_id` =" + str(index + 1) + ";")
+
+        else:
+            # 2.2 Insert person 1 to person X
+            cursor.execute("INSERT INTO `mean_person_features` (`person_id` , `counter`) VALUES(" + str(index + 1) + " , 1);")
+            logging.debug("  INSERT INTO `mean_person_features` (`person_id` , `counter`) VALUES(" + str(index + 1) + " , 1);")
+
+        # 3 Insert features for person X
+        for i in range(128):
+            cursor.execute("UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
+            logging.debug("  UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
 
         database.commit()
         logging.info("  Save all the features of faces registered into databse")
@@ -151,11 +150,8 @@ class Face_Recognizer:
         self.face_features_known_list = []
         self.face_name_known_list = []
         # 1. get database face numbers
-        cmd_rd = "SELECT COUNT(*) FROM `mean_person_features`;"
-        cursor.execute(cmd_rd)
-        results = cursor.fetchall()
-        # print(results[0]["COUNT(*)"])
-        person_cnt = int(results[0]["COUNT(*)"])
+        cursor.execute("SELECT * FROM `mean_person_features`;")
+        person_cnt = len(cursor.fetchall())
         logging.debug("  person_cnt: " + str(person_cnt))
         if person_cnt:
             # 2. get features for person X
@@ -166,7 +162,7 @@ class Face_Recognizer:
                 cursor.execute(cmd_lookup)
                 results = cursor.fetchall()
                 results = list(results[0].values())
-                features = results[1:]
+                features = results[2:]
                 results = [float(feature) for feature in features]
                 self.face_features_known_list.append(results)
                 self.face_name_known_list.append("Person_" + str(person + 1))
@@ -203,14 +199,27 @@ class Face_Recognizer:
     # Return the mean value of 128D face descriptor for person X
     def return_features_mean_personX(self, path_face_personX, id):
         features_list_personX = []
+        counter_up = False
         photos_list = [f for f in os.listdir(path_face_personX) if not f.startswith('.')]
         photos_list.sort(key = self.photo_id)
         # logging.debug("  len(photos_list): " + str(len(photos_list)))
         # logging.debug("  photos_list: " + str(photos_list))
-        cursor.execute("SELECT COUNT(*) FROM `person_features` WHERE `person_id` = " + str(id) + ";")
-        database_photo_cnt = int(cursor.fetchall()[0]["COUNT(*)"])
-        # logging.debug("  database_photo_cnt: " + str(database_photo_cnt))
-        current_date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+        cursor.execute("SELECT * FROM `person_features` WHERE `person_id` = " + str(id) + ";")
+        results = cursor.fetchall()
+        database_photo_cnt = len(results)
+        logging.debug("  database_photo_cnt: " + str(database_photo_cnt))
+        current_date = datetime.combine(datetime.today().date(), datetime.today().time().replace(microsecond=0))
+        if(database_photo_cnt != 0):
+            last_stored_date = list(results[database_photo_cnt-1].values())[2]
+            last_stored_date = datetime.strptime(last_stored_date, '%Y-%m-%d %H:%M:%S')
+            time_difference = (current_date - last_stored_date).total_seconds()
+            logging.debug("  current_date: " + str(current_date))
+            logging.debug("  last_stored_date: " + str(last_stored_date))
+            logging.debug("  time_difference: " + str(time_difference))
+            if time_difference > 300:
+                counter_up = True
+            else:
+                counter_up = False
 
         if photos_list:
             # for i in range(len(photos_list)):
@@ -223,8 +232,8 @@ class Face_Recognizer:
                     i += 1
                 else:
                     # 2. Insert person 1 to person X
-                    cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
-                    # logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
+                    cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
+                    # logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
 
                     # 3. Insert features for person X
                     for j in range(128):
@@ -256,7 +265,7 @@ class Face_Recognizer:
             features_mean_personX = np.array(features_list_personX, dtype=object).mean(axis=0)
         else:
             features_mean_personX = np.zeros(128, dtype=object, order='C')
-        return features_mean_personX
+        return features_mean_personX, counter_up
 
     def blur_detection(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -359,21 +368,20 @@ class Face_Recognizer:
                 current_face_dir = self.path_photos_from_camera + "person_" + str(self.existing_faces_cnt + 1)
                 os.makedirs(current_face_dir)
                 logging.info("\n%-40s %s", "Create folders:", current_face_dir)
+                index = self.existing_faces_cnt
                 debug_text = "  Novel frame accepted and captured!"
             else:
                 current_face_dir = self.path_photos_from_camera + "person_" + str(index + 1)
                 debug_text = "  frame accepted and captured!"
 
-            img_name = str(current_face_dir) + "/img_face_" + str(self.frame_cnt) + "_" + "{:.1f}".format(
-                blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
+            img_name = str(current_face_dir) + "/img_face_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
             cv2.imwrite(img_name, img_blank)
             logging.info("  Save into:                    " + img_name)
 
-            self.feature_extraction_csv()
+            self.feature_extraction(index)
             logging.debug(debug_text)
 
-        cv2.imwrite("debug/debug_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(
-            close_eye_index) + "_" + str(head_direction_index) + ".jpg", img_tmp)  # Dump current frame image if needed
+        cv2.imwrite("debug/debug_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg", img_tmp)  # Dump current frame image if needed
 
 
     def update_fps(self):
@@ -573,8 +581,8 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        # cap = cv2.VideoCapture("data/test.mp4")  # Get video stream from video file
-        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
+        cap = cv2.VideoCapture("data/test.mp4")  # Get video stream from video file
+        # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # self.cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
 
