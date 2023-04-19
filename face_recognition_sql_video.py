@@ -18,10 +18,12 @@ from datetime import datetime
 detector = dlib.get_frontal_face_detector()
 
 # Get face landmarks
-predictor = dlib.shape_predictor('data/data_dlib/shape_predictor_68_face_landmarks.dat')
+shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
+predictor = dlib.shape_predictor(shape_predictor_path)
 
 # Use Dlib resnet50 model to get 128D face descriptor
-face_reco_model = dlib.face_recognition_model_v1("data/data_dlib/dlib_face_recognition_resnet_model_v1.dat")
+face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
+face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
 
 # Create a connection object
 connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
@@ -77,7 +79,7 @@ class Face_Recognizer:
         self.reclassify_interval = 5
 
         ########################################################################################
-        self.path_photos_from_camera = "data/data_faces_from_camera/"
+        self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
         self.existing_faces_cnt = 0  # for counting saved faces
         self.similarity_thresh = 0.5
         self.eye_ar_thresh = 0.21
@@ -122,7 +124,7 @@ class Face_Recognizer:
         logging.debug("  self.existing_faces_cnt: " + str(self.existing_faces_cnt))
 
         # Get the mean/average features of face/personX, it will be a list with a length of 128D
-        features_mean_personX, counter_up = self.return_features_mean_personX(self.path_photos_from_camera + "person_" + str(index + 1), index + 1)
+        features_mean_personX, counter_up = self.return_features_mean_personX(os.path.join(self.path_photos_from_camera , "person_" + str(index + 1)), index + 1)
 
         if person_start and person_start == self.existing_faces_cnt:
             # 2.1 Update person 1 to person X
@@ -225,19 +227,19 @@ class Face_Recognizer:
             # for i in range(len(photos_list)):
             for i in range(database_photo_cnt, len(photos_list)):
                 # Get 128D features for single image of personX
-                logging.info("%-40s %-20s", "  Reading image:", path_face_personX + "/" + photos_list[i])
-                features_128d = self.return_128d_features(path_face_personX + "/" + photos_list[i])
+                logging.info("%-40s %-20s", "  Reading image:", os.path.join(path_face_personX , photos_list[i]))
+                features_128d = self.return_128d_features(os.path.join(path_face_personX , photos_list[i]))
                 # Jump if no face detected from image
                 if features_128d == 0:
                     i += 1
                 else:
                     # 2. Insert person 1 to person X
-                    cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
+                    cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "');")
                     # logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
 
                     # 3. Insert features for person X
                     for j in range(128):
-                        cursor.execute("UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
+                        cursor.execute("UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "' AND `person_id` = " + str(id) + " ;")
                         # logging.debug("  UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
         else:
             logging.warning("  Warning: No images in%s/", path_face_personX)
@@ -365,24 +367,113 @@ class Face_Recognizer:
 
             if index is None:
                 self.check_existing_faces_cnt()
-                current_face_dir = self.path_photos_from_camera + "person_" + str(self.existing_faces_cnt + 1)
+                current_face_dir = os.path.join(self.path_photos_from_camera , "person_" + str(self.existing_faces_cnt + 1))
                 os.makedirs(current_face_dir)
                 logging.info("\n%-40s %s", "Create folders:", current_face_dir)
                 index = self.existing_faces_cnt
                 debug_text = "  Novel frame accepted and captured!"
             else:
-                current_face_dir = self.path_photos_from_camera + "person_" + str(index + 1)
+                current_face_dir = os.path.join(self.path_photos_from_camera , "person_" + str(index + 1))
                 debug_text = "  frame accepted and captured!"
 
-            img_name = str(current_face_dir) + "/img_face_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
+            img_name = os.path.join(str(current_face_dir) , "img_face_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg")
             cv2.imwrite(img_name, img_blank)
             logging.info("  Save into:                    " + img_name)
 
             self.feature_extraction(index)
             logging.debug(debug_text)
 
-        cv2.imwrite("debug/debug_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg", img_tmp)  # Dump current frame image if needed
+        filename = "debug/debug_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
+        filename = filename.replace('/', os.sep).replace('\\', os.sep)
+        cv2.imwrite(filename, img_tmp)  # Dump current frame image if needed
+        # cv2.imwrite("debug/debug_" + str(self.frame_cnt) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg", img_tmp)  # Dump current frame image if needed
 
+    def db_initialize(self):
+        db_info = {
+            "host": "localhost",
+            "user": "hamidreza",
+            "password": "@123HrmZ123$",
+            "db": "dlib_face",
+            "charset": "utf8mb4"
+        }
+
+        # create a connection to the MySQL server
+        conn_init = pymysql.connect(
+                host=db_info["host"],
+                user=db_info["user"],
+                password=db_info["password"],
+                charset=db_info["charset"]
+            )
+
+        try:
+            # create a cursor object
+            cursor = conn_init.cursor()
+
+            # execute a query to get a list of all databases
+            cursor.execute("SELECT schema_name FROM information_schema.SCHEMATA")
+
+            # fetch all rows
+            rows = cursor.fetchall()
+
+            # check if the "dlib_face" database exists
+            db_exists = False
+            for row in rows:
+                if row[0] == "dlib_face":
+                    db_exists = True
+                    break
+
+            if db_exists:
+                logging.debug("The database 'dlib_face' exists.")
+            else:
+                logging.debug("The database 'dlib_face' does not exist.")
+
+        finally:
+            # close the connection
+            conn_init.close()
+            
+        if not db_exists:
+
+            # create a connection to the MySQL server
+            conn = pymysql.connect(
+                host=db_info["host"],
+                user=db_info["user"],
+                password=db_info["password"],
+                charset=db_info["charset"]
+            )
+            try:
+                # create a cursor object
+                cursor = conn.cursor()
+
+                # execute a query to create the database if it doesn't exist
+                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_info['db']}")
+                cursor.execute(f"USE {db_info['db']}")
+
+
+                start_part = "CREATE TABLE `person_features` (`id` INT NOT NULL AUTO_INCREMENT, `person_id` INT NOT NULL, `date` VARCHAR(45) NOT NULL, `image_path` VARCHAR(2048) NOT NULL"
+                middle_part = ""
+                for i in range(128):
+                    middle_part = middle_part + ", `feature_" + str(i+1) + "` VARCHAR(100) NULL"
+                end_part = ", PRIMARY KEY (`id`));"
+
+                mean_start_part = "CREATE TABLE `mean_person_features` (`person_id` INT NOT NULL, `counter` INT NOT NULL"
+                mean_middle_part = ""
+                for i in range(128):
+                    mean_middle_part = mean_middle_part + ", `mean_feature_" + str(i+1) + "` VARCHAR(100) NULL"
+                mean_end_part = ", PRIMARY KEY (`person_id`), UNIQUE INDEX `person_id_UNIQUE` (`person_id` ASC) VISIBLE);"
+
+                person_sql_query = start_part + middle_part + end_part
+                cursor.execute(person_sql_query)
+                mean_person_sql_query = mean_start_part + mean_middle_part + mean_end_part
+                cursor.execute(mean_person_sql_query)
+
+                # commit the changes
+                conn.commit()
+
+                logging.debug(f"The tables have been created in the database {db_info['db']}.")
+
+            finally:
+                # close the connection
+                conn.close()
 
     def update_fps(self):
         now = time.time()
@@ -437,7 +528,7 @@ class Face_Recognizer:
 
     # Face detection and recognition wit OT from input video stream
     def process(self, stream):
-
+        self.db_initialize()
         while stream.isOpened():
             self.frame_cnt += 1
             logging.debug("  Frame " + str(self.frame_cnt) + " starts")
@@ -579,11 +670,12 @@ class Face_Recognizer:
             cv2.imshow("camera", img_rd)
 
             logging.debug("  Frame ends\n\n")
+            os.path.sep
 
     def run(self):
-        cap = cv2.VideoCapture("data/test.mp4")  # Get video stream from video file
+        cap = cv2.VideoCapture(os.path.join('data' , 'test.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
-        # self.cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
+        # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
 
         cap.release()
