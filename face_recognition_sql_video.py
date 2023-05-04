@@ -561,7 +561,7 @@ class Face_Recognizer:
 
     @staticmethod
     # Compute the Euclidean distance between two 128D features
-    def return_euclidean_distance(feature_1, feature_2):
+    def return_euclidean_distance(self, feature_1, feature_2):
         feature_1 = np.array(feature_1)
         feature_2 = np.array(feature_2)
         dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
@@ -745,8 +745,8 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        # cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
-        cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
+        cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
+        # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
 
