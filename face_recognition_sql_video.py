@@ -29,12 +29,6 @@ mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 logging.basicConfig(level=logging.DEBUG)
 
-# Create a connection object
-connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
-
-database = pymysql.connect(**connection_params)
-cursor = database.cursor()
-
 class Face_Recognizer:
     def __init__(self):
         self.font = cv2.FONT_ITALIC
@@ -102,6 +96,13 @@ class Face_Recognizer:
             pass
         else:
             os.mkdir(self.path_photos_from_camera)
+    
+    def db_conn(self):
+        # Create a connection object
+        connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
+        database = pymysql.connect(**connection_params)
+        cursor = database.cursor()
+        return cursor,database
 
     def check_existing_faces_count(self):
         if os.listdir(self.path_photos_from_camera):
@@ -120,6 +121,7 @@ class Face_Recognizer:
     def feature_extraction(self, index):
 
         # 1. check existing people in mysql
+        cursor, database = self.db_conn()
         cursor.execute("SELECT * FROM `mean_person_features`;")
         results = cursor.fetchall()
         person_start = len(results)
@@ -156,6 +158,7 @@ class Face_Recognizer:
         self.face_features_known_list = []
         self.face_name_known_list = []
         # 1. get database face numbers
+        cursor, database = self.db_conn()
         cursor.execute("SELECT * FROM `mean_person_features`;")
         person_count = len(cursor.fetchall())
         logging.debug("  person_count: " + str(person_count))
@@ -210,6 +213,7 @@ class Face_Recognizer:
         photos_list.sort(key = self.photo_id)
         # logging.debug("  len(photos_list): " + str(len(photos_list)))
         # logging.debug("  photos_list: " + str(photos_list))
+        cursor, database = self.db_conn()
         cursor.execute("SELECT * FROM `person_features` WHERE `person_id` = " + str(id) + ";")
         results = cursor.fetchall()
         database_photo_count = len(results)
