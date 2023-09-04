@@ -18,19 +18,16 @@ import mediapipe as mp
 detector = dlib.get_frontal_face_detector()
 
 # Get face landmarks
-
 # shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
 # predictor = dlib.shape_predictor(shape_predictor_path)
 predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 # Use Dlib resnet50 model to get 128D face descriptor
-
 # face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
 # face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
 face_reco_model = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
 
 mp_face_mesh = mp.solutions.face_mesh
-mp_face_mesh_prime = mp.python.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 logging.basicConfig(level=logging.DEBUG)
 
@@ -49,17 +46,17 @@ class Face_Recognizer:
         self.frame_count = 0
 
         # An array used to store all storing face features and names of known subjects
-        self.face_features_known_list = []
-        # Save the name of faces in the database
-        self.face_name_known_list = []
+        self.known_face_features_list = []
+        # Save the id of faces in the database
+        self.known_face_id_list = []
 
         # List to save centroid positions of ROI in previous frame and current frame 
         self.last_frame_face_centroid_list = []
         self.current_frame_face_centroid_list = []
 
-        # List to save names of objects in previous frame and current frame 
-        self.last_frame_face_name_list = []
-        self.current_frame_face_name_list = []
+        # List to save ids of faces in previous frame and current frame 
+        self.last_frame_face_id_list = []
+        self.current_frame_face_id_list = []
 
         # Counter of the number of faces in the previous frame and the current frame
         self.last_frame_face_count = 0
@@ -84,9 +81,9 @@ class Face_Recognizer:
         ########################################################################################
         self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
         self.existing_faces_count = 0  # for counting saved faces
-        self.similarity_thresh = 0.45
+        self.similarity_thresh = 0.4
         self.eye_ar_thresh = 0.21
-        self.blur_thresh = 55.0
+        self.blur_thresh = 150
         self.y_direction_thresh = 18.0  # 15.0
         self.x_direction_thresh = 30.0  # 17.0
         self.dimesion_thresh = 120
@@ -156,12 +153,12 @@ class Face_Recognizer:
             # logging.debug("  UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
 
         database.commit()
-        logging.info("  Save all the features of faces registered into databse")
+        logging.info("  Stored all the features of faces registered into databse")
 
     # Get known faces from "features_all.csv"
     def get_face_database(self):
-        self.face_features_known_list = []
-        self.face_name_known_list = []
+        self.known_face_features_list = []
+        self.known_face_id_list = []
         # 1. get database face numbers
         cursor, database = self.db_conn()
         cursor.execute("SELECT * FROM `mean_person_features`;")
@@ -178,11 +175,11 @@ class Face_Recognizer:
                 results = list(results[0].values())
                 features = results[2:]
                 results = [float(feature) for feature in features]
-                self.face_features_known_list.append(results)
-                self.face_name_known_list.append("Person_" + str(person + 1))
+                self.known_face_features_list.append(results)
+                self.known_face_id_list.append("Person_" + str(person + 1))
                 # print(results)
-            logging.debug("  face_features_known_list: " + str(self.face_features_known_list))
-            logging.debug("  Faces in Database：" + str(len(self.face_name_known_list)))
+            logging.debug("  known_face_features_list: " + str(self.known_face_features_list))
+            logging.debug("  Faces in Database：" + str(len(self.known_face_id_list)))
             return 1
         else:
             logging.warning("  No Face found!")
@@ -248,12 +245,14 @@ class Face_Recognizer:
                 else:
                     # 2. Insert person 1 to person X
                     cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "');")
-                    # logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
+                    logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
 
                     # 3. Insert features for person X
                     for j in range(128):
                         cursor.execute("UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "' AND `person_id` = " + str(id) + " ;")
-                        # logging.debug("  UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
+                        logging.debug("  UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
+                
+            database.commit()
         else:
             logging.warning("  Warning: No images in%s/", path_face_personX)
         
@@ -403,7 +402,7 @@ class Face_Recognizer:
 
     def face_capturer(self, image, face, phase = None, index = None):
         if phase is not None and phase == 0 and self.first_faces > 0:  # if there is no face in database phase is 0
-            self.current_frame_face_name_list.append("unknown")
+            self.current_frame_face_id_list.append("unknown")
             logging.debug("  self.first_faces: " + str(self.first_faces))
             self.first_faces = self.first_faces - 1
 
@@ -476,7 +475,7 @@ class Face_Recognizer:
             "password": "user",
             "db": "dlib_face",
             "charset": "utf8mb4"
-        }
+            }
 
         # create a connection to the MySQL server
         conn_init = pymysql.connect(
@@ -484,7 +483,7 @@ class Face_Recognizer:
                 user=db_info["user"],
                 password=db_info["password"],
                 charset=db_info["charset"]
-            )
+                )
 
         try:
             # create a cursor object
@@ -577,8 +576,8 @@ class Face_Recognizer:
     # Using Centroid Tracking to Recognize Faces; Use centroid tracker to link face_x in current frame with person_x in last frame
     def centroid_tracker(self):
         logging.debug("  inside centroid_tracker!")
-        logging.debug("  self.last_frame_face_name_list: " + str(self.last_frame_face_name_list))
-        logging.debug("  self.current_frame_face_name_list: " + str(self.current_frame_face_name_list))
+        logging.debug("  self.last_frame_face_id_list: " + str(self.last_frame_face_id_list))
+        logging.debug("  self.current_frame_face_id_list: " + str(self.current_frame_face_id_list))
         for i in range(len(self.current_frame_face_centroid_list)):
             logging.debug("  inside for inside centroid_tracker!")
             logging.debug("  self.current_frame_face_centroid_list: " + str(self.current_frame_face_centroid_list))
@@ -593,7 +592,7 @@ class Face_Recognizer:
 
             last_frame_num = e_distance_current_frame_person_x_list.index(min(e_distance_current_frame_person_x_list))
             logging.debug("  last_frame_num: " + str(last_frame_num))
-            self.current_frame_face_name_list[i] = self.last_frame_face_name_list[last_frame_num]
+            self.current_frame_face_id_list[i] = self.last_frame_face_id_list[last_frame_num]
 
     # Add explanatory text on the cv2 window
     def draw_note(self, img_rd):
@@ -604,7 +603,7 @@ class Face_Recognizer:
         cv2.putText(img_rd, "Faces:  " + str(self.current_frame_face_count), (20, 160), self.font, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
         cv2.putText(img_rd, "Q: Quit", (20, 450), self.font, 0.8, (255, 255, 255), 1, cv2.LINE_AA)
 
-        for i in range(len(self.current_frame_face_name_list)):
+        for i in range(len(self.current_frame_face_id_list)):
             img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple([int(self.current_frame_face_centroid_list[i][0]), int(self.current_frame_face_centroid_list[i][1])]), self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
 
     # Face detection and recognition wit OT from input video stream
@@ -625,7 +624,7 @@ class Face_Recognizer:
                 self.current_frame_face_count = len(faces)
 
                 # 4. Update the face name list in last frame
-                self.last_frame_face_name_list = self.current_frame_face_name_list[:]
+                self.last_frame_face_id_list = self.current_frame_face_id_list[:]
 
                 # 5. Update the list of centroids for the previous frame and the current frame
                 self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
@@ -637,7 +636,7 @@ class Face_Recognizer:
 
                     self.current_frame_face_position_list = []
 
-                    if "unknown" in self.current_frame_face_name_list:
+                    if "unknown" in self.current_frame_face_id_list:
                         logging.debug("  There are unknown faces, start reclassify_interval_count counting")
                         self.reclassify_interval_count += 1
 
@@ -652,11 +651,12 @@ class Face_Recognizer:
                         self.centroid_tracker()
 
                     logging.debug("  current_frame_face_count: " + str(self.current_frame_face_count))
-                    logging.debug("  current_frame_face_name_list len : " + str(len(self.current_frame_face_name_list)))
+                    logging.debug("  current_frame_face_id_list len : " + str(len(self.current_frame_face_id_list)))
+                    
                     # for i in range(self.current_frame_face_count):
-                    for i in range(len(self.current_frame_face_name_list)):
+                    for i in range(len(self.current_frame_face_id_list)):
                         # 6.2 Write names under ROI
-                        img_rd = cv2.putText(img_rd, self.current_frame_face_name_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+                        img_rd = cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
                     self.draw_note(img_rd)
 
                 # 6.2 If the number of faces in the current frame and the previous frame changes
@@ -671,15 +671,15 @@ class Face_Recognizer:
                     if self.current_frame_face_count == 0:
                         logging.debug("  scene 2.1 No faces in this frame!")
                         # clear list of names and features
-                        self.current_frame_face_name_list = []
+                        self.current_frame_face_id_list = []
                     # 6.2.2 If the number of faces increased
                     else:
                         logging.debug("  scene 2.2 Get faces in this frame and do face recognition")
-                        self.current_frame_face_name_list = []
+                        self.current_frame_face_id_list = []
                         for i in range(len(faces)):
                             shape = predictor(img_rd, faces[i])
                             self.current_frame_face_feature_list.append(face_reco_model.compute_face_descriptor(img_rd, shape))
-                            self.current_frame_face_name_list.append("unknown")
+                            self.current_frame_face_id_list.append("unknown")
 
                         # 6.2.2.1 Traverse all faces in the captured image
                         for k in range(len(faces)):
@@ -693,10 +693,10 @@ class Face_Recognizer:
 
                             # 6.2.2.3
                             # For every faces detected, compare the faces in the database
-                            for i in range(len(self.face_features_known_list)):
+                            for i in range(len(self.known_face_features_list)):
 
-                                if str(self.face_features_known_list[i][0]) != '0.0':
-                                    e_distance_tmp = self.return_euclidean_distance(self.current_frame_face_feature_list[k], self.face_features_known_list[i])
+                                if str(self.known_face_features_list[i][0]) != '0.0':
+                                    e_distance_tmp = self.return_euclidean_distance(self.current_frame_face_feature_list[k], self.known_face_features_list[i])
                                     logging.debug("      with person %d, the e-distance: %f", i + 1, e_distance_tmp)
                                     self.current_frame_face_X_e_distance_list.append(e_distance_tmp)
                                 else:
@@ -704,12 +704,12 @@ class Face_Recognizer:
                                     self.current_frame_face_X_e_distance_list.append(999999999)
 
                             # 6.2.2.4 Find the one with minimum e distance
-                            similar_person_num = self.current_frame_face_X_e_distance_list.index(min(self.current_frame_face_X_e_distance_list))
+                            similar_person_id = self.current_frame_face_X_e_distance_list.index(min(self.current_frame_face_X_e_distance_list))
 
                             if min(self.current_frame_face_X_e_distance_list) < self.similarity_thresh:
-                                self.current_frame_face_name_list[k] = self.face_name_known_list[similar_person_num]
-                                logging.debug("  Face recognition result: %s", self.face_name_known_list[similar_person_num])
-                                self.face_capturer(img_rd, faces[k], index = similar_person_num)
+                                self.current_frame_face_id_list[k] = self.known_face_id_list[similar_person_id]
+                                logging.debug("  Face recognition result: %s", self.known_face_id_list[similar_person_id])
+                                self.face_capturer(img_rd, faces[k], index = similar_person_id)
                             else:
                                 logging.debug("  Face recognition result: Unknown person")
                                 logging.debug("  K: " + str(k))
@@ -752,11 +752,13 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
+        # logging.debug(" mp_face_mesh: " + str(mp_face_mesh))
+
         # cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
-        cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
+        # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)        # Get video stream from camera im windows
         self.process(cap)
-
         cap.release()
         cv2.destroyAllWindows()
 
@@ -767,10 +769,12 @@ def main():
     for handler in logging.root.handlers[:]:
         logging.root.removeHandler(handler)
     
-    logging.basicConfig(filename="log.txt", filemode="w")
+    # logging.basicConfig(filename="log.txt", filemode="w")
     logger = logging.getLogger()  # Let us Create an object
     logger.setLevel(logging.DEBUG)
-    # logging.basicConfig(level=logging.INFO)
+    handler = logging.FileHandler('log.txt', 'w', 'utf-8')
+    logger.addHandler(handler)
+
     Face_Recognizer_con = Face_Recognizer()
     Face_Recognizer_con.run()
 
