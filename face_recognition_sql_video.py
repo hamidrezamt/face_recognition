@@ -752,11 +752,6 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        # mp_path = os.path.abspath(mp.__file__)
-        # logging.debug(" mp_path: " + str(mp_path))
-        # logging.debug(" mp_face_mesh: " + str(mp_face_mesh))
-        # logging.debug(" mp_face_mesh_prime: " + str(mp_face_mesh_prime))
-
         # cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
