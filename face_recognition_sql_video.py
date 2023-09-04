@@ -18,14 +18,19 @@ import mediapipe as mp
 detector = dlib.get_frontal_face_detector()
 
 # Get face landmarks
-shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
-predictor = dlib.shape_predictor(shape_predictor_path)
+
+# shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
+# predictor = dlib.shape_predictor(shape_predictor_path)
+predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 # Use Dlib resnet50 model to get 128D face descriptor
-face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
-face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
+
+# face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
+# face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
+face_reco_model = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
 
 mp_face_mesh = mp.solutions.face_mesh
+mp_face_mesh_prime = mp.python.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 logging.basicConfig(level=logging.DEBUG)
 
@@ -99,7 +104,7 @@ class Face_Recognizer:
     
     def db_conn(self):
         # Create a connection object
-        connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
+        connection_params = { "host": "localhost", "user": "root", "password": "user", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
         database = pymysql.connect(**connection_params)
         cursor = database.cursor()
         return cursor,database
@@ -148,7 +153,7 @@ class Face_Recognizer:
         # 3 Insert features for person X
         for i in range(128):
             cursor.execute("UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
-            logging.debug("  UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
+            # logging.debug("  UPDATE `mean_person_features` SET `mean_feature_" + str(i + 1) + '`=' + str(features_mean_personX[i]) + " WHERE `person_id`=" + str(index + 1) + ";")
 
         database.commit()
         logging.info("  Save all the features of faces registered into databse")
@@ -330,7 +335,7 @@ class Face_Recognizer:
         face_2d = []
 
         if results.multi_face_landmarks:
-            logging.debug("face also detected by face mesh")
+            logging.debug(" face also detected by face mesh")
             for face_landmarks in results.multi_face_landmarks:
                 for idx, lm in enumerate(face_landmarks.landmark):
                     if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
@@ -417,14 +422,16 @@ class Face_Recognizer:
                 try:
                     img_tmp[ii][jj] = image[face.top() + ii][face.left() + jj]
                 except IndexError:
-                    logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
+                    # logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
+                    pass
 
         for ii in range(height * 2):
             for jj in range(width * 2):
                 try:
                     img_blank[ii][jj] = image[face.top() - hh + ii][face.left() - ww + jj]
                 except IndexError:
-                    logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
+                    # logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
+                    pass
 
         blur_index = self.blur_detection(img_tmp)
         close_eye_index = self.close_eye_detection(shape)
@@ -465,8 +472,8 @@ class Face_Recognizer:
     def db_initialize(self):
         db_info = {
             "host": "localhost",
-            "user": "hamidreza",
-            "password": "@123HrmZ123$",
+            "user": "root",
+            "password": "user",
             "db": "dlib_face",
             "charset": "utf8mb4"
         }
@@ -561,7 +568,7 @@ class Face_Recognizer:
 
     @staticmethod
     # Compute the Euclidean distance between two 128D features
-    def return_euclidean_distance(self, feature_1, feature_2):
+    def return_euclidean_distance(feature_1, feature_2):
         feature_1 = np.array(feature_1)
         feature_2 = np.array(feature_2)
         dist = np.sqrt(np.sum(np.square(feature_1 - feature_2)))
@@ -662,7 +669,7 @@ class Face_Recognizer:
 
                     # 6.2.1 If the number of faces Reduced
                     if self.current_frame_face_count == 0:
-                        logging.debug("  scene 2.1 No faces in this frame!!!")
+                        logging.debug("  scene 2.1 No faces in this frame!")
                         # clear list of names and features
                         self.current_frame_face_name_list = []
                     # 6.2.2 If the number of faces increased
@@ -745,9 +752,14 @@ class Face_Recognizer:
             logging.debug("  Frame ends\n\n")
 
     def run(self):
-        cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
+        # mp_path = os.path.abspath(mp.__file__)
+        # logging.debug(" mp_path: " + str(mp_path))
+        # logging.debug(" mp_face_mesh: " + str(mp_face_mesh))
+        # logging.debug(" mp_face_mesh_prime: " + str(mp_face_mesh_prime))
+
+        # cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
-        # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
+        cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
         self.process(cap)
 
         cap.release()
@@ -756,7 +768,11 @@ class Face_Recognizer:
 
 def main():
     # logging.basicConfig(level=logging.DEBUG) # Set log level to 'logging.DEBUG' to print debug info of every frame
-    logging.basicConfig(filename="log.txt", filemode="w", force=True)
+    # Remove all handlers associated with the root logger object.
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
+    logging.basicConfig(filename="log.txt", filemode="w")
     logger = logging.getLogger()  # Let us Create an object
     logger.setLevel(logging.DEBUG)
     # logging.basicConfig(level=logging.INFO)
