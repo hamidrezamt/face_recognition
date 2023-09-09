@@ -9,10 +9,11 @@ import cv2
 import os
 import time
 import logging
-from imutils import face_utils
+from imutils import face_utils, resize
 from scipy.spatial import distance as dist
 from datetime import datetime
 import mediapipe as mp
+import matplotlib.pyplot as plt
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -76,16 +77,16 @@ class Face_Recognizer:
         # Reclassify after 'reclassify_interval' frames
         # If an "unknown" face is recognized, the face will be re-recognized after reclassify_interval_count counts to reclassify_interval
         self.reclassify_interval_count = 0
-        self.reclassify_interval = 5
+        self.reclassify_interval = 3
 
         ########################################################################################
         self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
         self.existing_faces_count = 0  # for counting saved faces
-        self.similarity_thresh = 0.4
-        self.eye_ar_thresh = 0.21
-        self.blur_thresh = 150
-        self.y_direction_thresh = 18.0  # 15.0
-        self.x_direction_thresh = 30.0  # 17.0
+        self.similarity_thresh = 0.44
+        self.eye_ar_thresh = 0.22
+        self.blur_thresh = 13.0
+        self.y_direction_thresh = 10.0
+        self.x_direction_thresh = 18.0 
         self.dimesion_thresh = 120
         self.once = True
         self.first_faces = 0
@@ -115,7 +116,7 @@ class Face_Recognizer:
             for person in person_list:
                 person_order = person.split('_')[1].split('_')[0]
                 person_num_list.append(int(person_order))
-            logging.debug("  Number of persons in base folder: " + str(max(person_num_list)))
+            logging.info("  Number of persons in base folder: " + str(max(person_num_list)))
             self.existing_faces_count = max(person_num_list)
         else:
             self.existing_faces_count = 0
@@ -127,7 +128,7 @@ class Face_Recognizer:
         cursor.execute("SELECT * FROM `mean_person_features`;")
         results = cursor.fetchall()
         person_start = len(results)
-        logging.debug("  person_start: " + str(person_start))
+        logging.info("  person_start: " + str(person_start))
         self.check_existing_faces_count()
         logging.debug("  self.existing_faces_count: " + str(self.existing_faces_count))
 
@@ -137,15 +138,15 @@ class Face_Recognizer:
         if person_start and person_start == self.existing_faces_count:
             # 2.1 Update person 1 to person X
             current_counter = list(results[index].values())[1]
-            logging.debug("  current counter: " + str(current_counter))
+            logging.info("  current counter: " + str(current_counter))
             if counter_up:
                 cursor.execute("UPDATE `mean_person_features` SET `counter` = " + str(current_counter + 1) + " WHERE `person_id` =" + str(index + 1) + ";")
-                logging.debug("  UPDATE `mean_person_features` SET `counter` = " + str(current_counter + 1) + " WHERE `person_id` =" + str(index + 1) + ";")
+                # logging.debug("  UPDATE `mean_person_features` SET `counter` = " + str(current_counter + 1) + " WHERE `person_id` =" + str(index + 1) + ";")
 
         else:
             # 2.2 Insert person 1 to person X
             cursor.execute("INSERT INTO `mean_person_features` (`person_id` , `counter`) VALUES(" + str(index + 1) + " , 1);")
-            logging.debug("  INSERT INTO `mean_person_features` (`person_id` , `counter`) VALUES(" + str(index + 1) + " , 1);")
+            # logging.debug("  INSERT INTO `mean_person_features` (`person_id` , `counter`) VALUES(" + str(index + 1) + " , 1);")
 
         # 3 Insert features for person X
         for i in range(128):
@@ -163,13 +164,13 @@ class Face_Recognizer:
         cursor, database = self.db_conn()
         cursor.execute("SELECT * FROM `mean_person_features`;")
         person_count = len(cursor.fetchall())
-        logging.debug("  person_count: " + str(person_count))
+        logging.info("  person_count: " + str(person_count))
         if person_count:
             # 2. get features for person X
             for person in range(person_count):
                 # lookup for personX                
                 cmd_lookup = "SELECT * FROM `mean_person_features` WHERE `person_id`=" + str(person + 1) + ";"
-                logging.debug("  SELECT * FROM `mean_person_features` WHERE `person_id`=" + str(person + 1) + ";")
+                # logging.debug("  SELECT * FROM `mean_person_features` WHERE `person_id`=" + str(person + 1) + ";")
                 cursor.execute(cmd_lookup)
                 results = cursor.fetchall()
                 results = list(results[0].values())
@@ -178,8 +179,8 @@ class Face_Recognizer:
                 self.known_face_features_list.append(results)
                 self.known_face_id_list.append("Person_" + str(person + 1))
                 # print(results)
-            logging.debug("  known_face_features_list: " + str(self.known_face_features_list))
-            logging.debug("  Faces in Database：" + str(len(self.known_face_id_list)))
+            # logging.debug("  known_face_features_list: " + str(self.known_face_features_list))
+            logging.info("  Faces in Database：" + str(len(self.known_face_id_list)))
             return 1
         else:
             logging.warning("  No Face found!")
@@ -219,15 +220,15 @@ class Face_Recognizer:
         cursor.execute("SELECT * FROM `person_features` WHERE `person_id` = " + str(id) + ";")
         results = cursor.fetchall()
         database_photo_count = len(results)
-        logging.debug("  database_photo_count: " + str(database_photo_count))
+        logging.info("  database_photo_count: " + str(database_photo_count))
         current_date = datetime.combine(datetime.today().date(), datetime.today().time().replace(microsecond=0))
         if(database_photo_count != 0):
             last_stored_date = list(results[database_photo_count-1].values())[2]
             last_stored_date = datetime.strptime(last_stored_date, '%Y-%m-%d %H:%M:%S')
             time_difference = (current_date - last_stored_date).total_seconds()
-            logging.debug("  current_date: " + str(current_date))
-            logging.debug("  last_stored_date: " + str(last_stored_date))
-            logging.debug("  time_difference: " + str(time_difference))
+            logging.info("  current_date: " + str(current_date))
+            logging.info("  last_stored_date: " + str(last_stored_date))
+            logging.info("  time_difference: " + str(time_difference))
             if time_difference > 300:
                 counter_up = True
             else:
@@ -245,12 +246,12 @@ class Face_Recognizer:
                 else:
                     # 2. Insert person 1 to person X
                     cursor.execute("INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "');")
-                    logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
+                    # logging.debug("  INSERT INTO `person_features` (`person_id`, `date`, `image_path`) VALUES (" + str(id) + " , '" + str(current_date.strftime('%Y-%m-%d %H:%M:%S')) + "' , '" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "');")
 
                     # 3. Insert features for person X
                     for j in range(128):
                         cursor.execute("UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.join(os.path.abspath(path_face_personX) , photos_list[i]) + "' AND `person_id` = " + str(id) + " ;")
-                        logging.debug("  UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
+                        # logging.debug("  UPDATE `person_features` SET `feature_" + str(j + 1) + '`=' + str(features_128d[j]) + " WHERE `image_path`='" + os.path.abspath(path_face_personX) + "/" + photos_list[i] + "' AND `person_id` = " + str(id) + " ;")
                 
             database.commit()
         else:
@@ -284,6 +285,31 @@ class Face_Recognizer:
     def blur_detection(self, image):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         return cv2.Laplacian(gray, cv2.CV_64F).var()
+
+    def detect_blur_fft(self, image, size=30):
+        # image = imutil.arr2img(numpy_array)
+        # image = resize(image, width=500)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # grab the dimensions of the image and use the dimensions to derive the center (x, y)-coordinates
+        (h, w) = image.shape
+        (cX, cY) = (int(w / 2.0), int(h / 2.0))
+        
+        # compute the FFT to find the frequency transform, then shift the zero frequency component (i.e., DC component located at the top-left corner) to the center where it will be more easy to analyze
+        fft = np.fft.fft2(image)
+        fftShift = np.fft.fftshift(fft)
+
+        # zero-out the center of the FFT shift (i.e., remove low frequencies), apply the inverse shift such that the DC component once again becomes the top-left, and then apply the inverse FFT
+        fftShift[cY - size:cY + size, cX - size:cX + size] = 0
+        fftShift = np.fft.ifftshift(fftShift)
+        recon = np.fft.ifft2(fftShift)
+
+        # compute the magnitude spectrum of the reconstructed image, then compute the mean of the magnitude values
+        magnitude = 20 * np.log(np.abs(recon))
+        mean = np.mean(magnitude)
+        
+        # the image will be considered "blurry" if the mean value of the magnitudes is less than the threshold value
+        return mean
 
     def eye_aspect_ratio(self, eye):
         # compute the euclidean distances between the two sets of vertical eye landmarks (x, y)-coordinates
@@ -334,7 +360,7 @@ class Face_Recognizer:
         face_2d = []
 
         if results.multi_face_landmarks:
-            logging.debug(" face also detected by face mesh")
+            logging.info(" face also detected by face mesh")
             for face_landmarks in results.multi_face_landmarks:
                 for idx, lm in enumerate(face_landmarks.landmark):
                     if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
@@ -381,19 +407,19 @@ class Face_Recognizer:
     def head_direction(self, image):
         try:
             x, y = self.head_pose_estimation(image)
-            logging.debug("  Y index is: " + str(y) + " | X index is: " + str(x))
+            logging.info("  Y index is: " + str(y) + " | X index is: " + str(x))
             if y < self.y_direction_thresh * -1 or y > self.y_direction_thresh or x < self.x_direction_thresh * -1 or x > self.x_direction_thresh:
                 dir = 0
             else:
                 dir = 1
         except (TypeError):
-            logging.debug("  Face Mesh detect NO face in frame")
+            logging.info("  Face Mesh detect NO face in frame")
             dir = 0
         return dir
     
     def image_dimension(self, image):
         width, height, channel = image.shape
-        logging.debug("  image's width: " + str(width) + " and image height: " + str(height))
+        logging.info("  image's width: " + str(width) + " and image height: " + str(height))
         if width >= self.dimesion_thresh and height >= self.dimesion_thresh:
             return 1
         else:
@@ -403,7 +429,7 @@ class Face_Recognizer:
     def face_capturer(self, image, face, phase = None, index = None):
         if phase is not None and phase == 0 and self.first_faces > 0:  # if there is no face in database phase is 0
             self.current_frame_face_id_list.append("unknown")
-            logging.debug("  self.first_faces: " + str(self.first_faces))
+            logging.info("  self.first_faces: " + str(self.first_faces))
             self.first_faces = self.first_faces - 1
 
         shape = predictor(image, face)
@@ -432,15 +458,17 @@ class Face_Recognizer:
                     # logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
                     pass
 
-        blur_index = self.blur_detection(img_tmp)
+        # blur_index = self.blur_detection(img_tmp)
+        blur_index = self.detect_blur_fft(img_tmp)
         close_eye_index = self.close_eye_detection(shape)
         head_direction_index = self.head_direction(img_blank)
         dimension_index = self.image_dimension(img_tmp)
 
-        logging.debug("  blur_detection(): " + str(blur_index))
-        logging.debug("  close_eye_detection(): " + str(close_eye_index))
-        logging.debug("  head_direction(): " + str(head_direction_index))
-        logging.debug("  image_dimension(): " + str(dimension_index))
+        # logging.debug("  blur_detection(): " + str(blur_index))
+        logging.info("  detect_blur_fft(): " + str(blur_index))
+        logging.info("  close_eye_detection(): " + str(close_eye_index))
+        logging.info("  head_direction(): " + str(head_direction_index))
+        logging.info("  image_dimension(): " + str(dimension_index))
 
         if blur_index > self.blur_thresh and close_eye_index > self.eye_ar_thresh and head_direction_index and dimension_index:
             debug_text = ""
@@ -461,7 +489,7 @@ class Face_Recognizer:
             logging.info("  Save into:                    " + img_name)
 
             self.feature_extraction(index)
-            logging.debug(debug_text)
+            logging.info(debug_text)
 
         filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
         filename = filename.replace('/', os.sep).replace('\\', os.sep)
@@ -503,9 +531,9 @@ class Face_Recognizer:
                     break
 
             if db_exists:
-                logging.debug("The database 'dlib_face' exists.")
+                logging.info("The database 'dlib_face' exists.")
             else:
-                logging.debug("The database 'dlib_face' does not exist.")
+                logging.info("The database 'dlib_face' does not exist.")
 
         finally:
             # close the connection
@@ -549,7 +577,7 @@ class Face_Recognizer:
                 # commit the changes
                 conn.commit()
 
-                logging.debug(f"The tables have been created in the database {db_info['db']}.")
+                logging.info(f"The tables have been created in the database {db_info['db']}.")
 
             finally:
                 # close the connection
@@ -611,7 +639,7 @@ class Face_Recognizer:
         self.db_initialize()
         while stream.isOpened():
             self.frame_count += 1
-            logging.debug("  Frame " + str(self.frame_count) + " starts")
+            logging.info("  Frame " + str(self.frame_count) + " starts")
             flag, img_rd = stream.read()
             kk = cv2.waitKey(1)
 
@@ -632,12 +660,12 @@ class Face_Recognizer:
 
                 # 6.1 If there is no change in the number of faces in the current frame and the previous frame
                 if (self.current_frame_face_count == self.last_frame_face_count) and (self.reclassify_interval_count != self.reclassify_interval):
-                    logging.debug("  scene 1: No face count changes in this frame!")
+                    logging.info("  scene 1: No face count changes in this frame!")
 
                     self.current_frame_face_position_list = []
 
                     if "unknown" in self.current_frame_face_id_list:
-                        logging.debug("  There are unknown faces, start reclassify_interval_count counting")
+                        logging.info("  There are unknown faces, start reclassify_interval_count counting")
                         self.reclassify_interval_count += 1
 
                     if self.current_frame_face_count != 0:
@@ -650,8 +678,8 @@ class Face_Recognizer:
                     if self.current_frame_face_count != 1:
                         self.centroid_tracker()
 
-                    logging.debug("  current_frame_face_count: " + str(self.current_frame_face_count))
-                    logging.debug("  current_frame_face_id_list len : " + str(len(self.current_frame_face_id_list)))
+                    logging.info("  current_frame_face_count: " + str(self.current_frame_face_count))
+                    logging.info("  current_frame_face_id_list len : " + str(len(self.current_frame_face_id_list)))
                     
                     # for i in range(self.current_frame_face_count):
                     for i in range(len(self.current_frame_face_id_list)):
@@ -661,7 +689,7 @@ class Face_Recognizer:
 
                 # 6.2 If the number of faces in the current frame and the previous frame changes
                 else:
-                    logging.debug("  scene 2: Faces count changes in this frame")
+                    logging.info("  scene 2: Faces count changes in this frame")
                     self.current_frame_face_position_list = []
                     self.current_frame_face_X_e_distance_list = []
                     self.current_frame_face_feature_list = []
@@ -669,12 +697,12 @@ class Face_Recognizer:
 
                     # 6.2.1 If the number of faces Reduced
                     if self.current_frame_face_count == 0:
-                        logging.debug("  scene 2.1 No faces in this frame!")
+                        logging.info("  scene 2.1 No faces in this frame!")
                         # clear list of names and features
                         self.current_frame_face_id_list = []
                     # 6.2.2 If the number of faces increased
                     else:
-                        logging.debug("  scene 2.2 Get faces in this frame and do face recognition")
+                        logging.info("  scene 2.2 Get faces in this frame and do face recognition")
                         self.current_frame_face_id_list = []
                         for i in range(len(faces)):
                             shape = predictor(img_rd, faces[i])
@@ -683,7 +711,7 @@ class Face_Recognizer:
 
                         # 6.2.2.1 Traverse all faces in the captured image
                         for k in range(len(faces)):
-                            logging.debug("  For face %d in current frame:", k + 1)
+                            logging.info("  For face %d in current frame:", k + 1)
                             shape = predictor(img_rd, faces[k])
                             self.current_frame_face_centroid_list.append([int(faces[k].left() + faces[k].right()) / 2, int(faces[k].top() + faces[k].bottom()) / 2])
                             self.current_frame_face_X_e_distance_list = []
@@ -697,7 +725,7 @@ class Face_Recognizer:
 
                                 if str(self.known_face_features_list[i][0]) != '0.0':
                                     e_distance_tmp = self.return_euclidean_distance(self.current_frame_face_feature_list[k], self.known_face_features_list[i])
-                                    logging.debug("      with person %d, the e-distance: %f", i + 1, e_distance_tmp)
+                                    logging.info("      with person %d, the e-distance: %f", i + 1, e_distance_tmp)
                                     self.current_frame_face_X_e_distance_list.append(e_distance_tmp)
                                 else:
                                     # person_X
@@ -708,11 +736,11 @@ class Face_Recognizer:
 
                             if min(self.current_frame_face_X_e_distance_list) < self.similarity_thresh:
                                 self.current_frame_face_id_list[k] = self.known_face_id_list[similar_person_id]
-                                logging.debug("  Face recognition result: %s", self.known_face_id_list[similar_person_id])
+                                logging.info("  Face recognition result: %s", self.known_face_id_list[similar_person_id])
                                 self.face_capturer(img_rd, faces[k], index = similar_person_id)
                             else:
-                                logging.debug("  Face recognition result: Unknown person")
-                                logging.debug("  K: " + str(k))
+                                logging.info("  Face recognition result: Unknown person")
+                                logging.info("  K: " + str(k))
                                 self.face_capturer(img_rd, faces[k], phase = 1)
 
                         # 7. Add note on cv2 window
@@ -720,7 +748,7 @@ class Face_Recognizer:
 
             else:
                 # Face detected
-                logging.debug("  there is no face in database")
+                logging.info("  there is no face in database")
                 #  Update the list of centroids for the previous frame and the current frame
                 self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
                 self.current_frame_face_centroid_list = []
@@ -749,15 +777,15 @@ class Face_Recognizer:
             cv2.namedWindow("camera", 1)
             cv2.imshow("camera", img_rd)
 
-            logging.debug("  Frame ends\n\n")
+            logging.info("  Frame ends\n\n")
 
     def run(self):
         # logging.debug(" mp_face_mesh: " + str(mp_face_mesh))
 
-        # cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
+        cap = cv2.VideoCapture(os.path.join('data' , 'test.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)        # Get video stream from camera im windows
+        # cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)        # Get video stream from camera im windows
         self.process(cap)
         cap.release()
         cv2.destroyAllWindows()
@@ -771,7 +799,7 @@ def main():
     
     # logging.basicConfig(filename="log.txt", filemode="w")
     logger = logging.getLogger()  # Let us Create an object
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     handler = logging.FileHandler('log.txt', 'w', 'utf-8')
     logger.addHandler(handler)
 
