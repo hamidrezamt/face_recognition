@@ -9,11 +9,11 @@ import cv2
 import os
 import time
 import logging
-from imutils import face_utils, resize
+from imutils import face_utils
 from scipy.spatial import distance as dist
 from datetime import datetime
 import mediapipe as mp
-import matplotlib.pyplot as plt
+import shutil
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -77,17 +77,18 @@ class Face_Recognizer:
         # Reclassify after 'reclassify_interval' frames
         # If an "unknown" face is recognized, the face will be re-recognized after reclassify_interval_count counts to reclassify_interval
         self.reclassify_interval_count = 0
-        self.reclassify_interval = 3
+        self.reclassify_interval = 5
 
         ########################################################################################
         self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
+        self.path_debug_photos_from_camera = 'debug/'
         self.existing_faces_count = 0  # for counting saved faces
         self.similarity_thresh = 0.44
         self.eye_ar_thresh = 0.22
-        self.blur_thresh = 13.0
-        self.y_direction_thresh = 10.0
-        self.x_direction_thresh = 18.0 
-        self.dimesion_thresh = 120
+        self.blur_thresh = 15.0
+        self.horz_direction_thresh = 10.0
+        self.vert_direction_thresh = 25.0 
+        self.dimesion_thresh = 100
         self.once = True
         self.first_faces = 0
         ########################################################################################
@@ -99,6 +100,13 @@ class Face_Recognizer:
             pass
         else:
             os.mkdir(self.path_photos_from_camera)
+
+    def clear_debug_dir(self):
+        if os.path.isdir(self.path_debug_photos_from_camera):
+            shutil.rmtree(self.path_debug_photos_from_camera)
+            os.mkdir(self.path_debug_photos_from_camera)
+        else:
+            os.mkdir(self.path_debug_photos_from_camera)
     
     def db_conn(self):
         # Create a connection object
@@ -405,25 +413,32 @@ class Face_Recognizer:
 
 
     def head_direction(self, image):
+        dir_x = dir_y = 0
         try:
             x, y = self.head_pose_estimation(image)
-            logging.info("  Y index is: " + str(y) + " | X index is: " + str(x))
-            if y < self.y_direction_thresh * -1 or y > self.y_direction_thresh or x < self.x_direction_thresh * -1 or x > self.x_direction_thresh:
-                dir = 0
+
+            if abs(x) > self.vert_direction_thresh:
+                dir_x = 0
             else:
-                dir = 1
+                dir_x = 1
+
+            if abs(y) > self.horz_direction_thresh:
+                dir_y = 0
+            else:
+                dir_y = 1
+    
         except (TypeError):
-            logging.info("  Face Mesh detect NO face in frame")
-            dir = 0
-        return dir
+            logging.info("\tFace Mesh detect NO face in frame")
+            dir_x = dir_y = 0
+        return dir_x, dir_y, x, y
     
     def image_dimension(self, image):
         width, height, channel = image.shape
-        logging.info("  image's width: " + str(width) + " and image height: " + str(height))
         if width >= self.dimesion_thresh and height >= self.dimesion_thresh:
-            return 1
+            out =  1
         else:
-            return 0
+            out = 0
+        return out, width, height
     
 
     def face_capturer(self, image, face, phase = None, index = None):
@@ -461,16 +476,19 @@ class Face_Recognizer:
         # blur_index = self.blur_detection(img_tmp)
         blur_index = self.detect_blur_fft(img_tmp)
         close_eye_index = self.close_eye_detection(shape)
-        head_direction_index = self.head_direction(img_blank)
-        dimension_index = self.image_dimension(img_tmp)
+        dir_x, dir_y, x, y = self.head_direction(img_blank)
+        dimension_index, width , height = self.image_dimension(img_tmp)
 
         # logging.debug("  blur_detection(): " + str(blur_index))
-        logging.info("  detect_blur_fft(): " + str(blur_index))
-        logging.info("  close_eye_detection(): " + str(close_eye_index))
-        logging.info("  head_direction(): " + str(head_direction_index))
-        logging.info("  image_dimension(): " + str(dimension_index))
+        logging.info("\tfft blurness: " + str(blur_index) + "  -> OK" if blur_index > self.blur_thresh else "\tfft blurness: " + str(blur_index) + " -> NOK")
+        logging.info("\tclose_eye_detection(): " + str(close_eye_index) + "  -> OK" if close_eye_index > self.eye_ar_thresh else "\tclose_eye_detection(): " + str(close_eye_index) + "  -> NOK")
+        logging.info("\tface's image width: " + str(width) + "\n\tface's image height: " + str(height))
+        logging.info("\timage's dimensions: OK" if dimension_index else "\timage's dimensions: NOK")
+        logging.info("\thorizontal index is: " + str(y) + " -> OK" if dir_y else "\thorizontal index is: " + str(y) + " -> NOK")
+        logging.info("\tvertical index is: " + str(x) + " -> OK" if dir_x else "\tvertical index is: " + str(x) + " -> NOK")
+        logging.info("\thead direction: OK" if dir_x and dir_y else "\thead direction: NOK")
 
-        if blur_index > self.blur_thresh and close_eye_index > self.eye_ar_thresh and head_direction_index and dimension_index:
+        if blur_index > self.blur_thresh and close_eye_index > self.eye_ar_thresh and dir_x and dir_y and dimension_index:
             debug_text = ""
 
             if index is None:
@@ -484,17 +502,16 @@ class Face_Recognizer:
                 current_face_dir = os.path.join(self.path_photos_from_camera , "person_" + str(index + 1))
                 debug_text = "  frame accepted and captured!"
 
-            img_name = os.path.join(str(current_face_dir) , "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg")
+            img_name = os.path.join(str(current_face_dir) , "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg")
             cv2.imwrite(img_name, img_blank)
             logging.info("  Save into:                    " + img_name)
 
             self.feature_extraction(index)
             logging.info(debug_text)
 
-        filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg"
+        filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg"
         filename = filename.replace('/', os.sep).replace('\\', os.sep)
         cv2.imwrite(filename, img_tmp)  # Dump current frame image if needed
-        # cv2.imwrite("debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(head_direction_index) + ".jpg", img_tmp)  # Dump current frame image if needed
 
     def db_initialize(self):
         db_info = {
@@ -636,6 +653,7 @@ class Face_Recognizer:
 
     # Face detection and recognition wit OT from input video stream
     def process(self, stream):
+        self.clear_debug_dir()
         self.db_initialize()
         while stream.isOpened():
             self.frame_count += 1
@@ -661,12 +679,16 @@ class Face_Recognizer:
                 # 6.1 If there is no change in the number of faces in the current frame and the previous frame
                 if (self.current_frame_face_count == self.last_frame_face_count) and (self.reclassify_interval_count != self.reclassify_interval):
                     logging.info("  scene 1: No face count changes in this frame!")
+                    logging.info("  reclassify_interval_count: " + str(self.reclassify_interval_count))
 
                     self.current_frame_face_position_list = []
 
-                    if "unknown" in self.current_frame_face_id_list:
-                        logging.info("  There are unknown faces, start reclassify_interval_count counting")
-                        self.reclassify_interval_count += 1
+                    # if "unknown" in self.current_frame_face_id_list:
+                    #     logging.info("  There are unknown faces, start reclassify_interval_count counting")
+                    #     self.reclassify_interval_count += 1
+
+                    logging.info("  Start reclassify_interval_count counting")
+                    self.reclassify_interval_count += 1
 
                     if self.current_frame_face_count != 0:
                         for k, d in enumerate(faces):
