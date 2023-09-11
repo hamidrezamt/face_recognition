@@ -14,6 +14,7 @@ from scipy.spatial import distance as dist
 from datetime import datetime
 import mediapipe as mp
 import shutil
+import concurrent.futures
 
 # Use frontal face detector of Dlib
 detector = dlib.get_frontal_face_detector()
@@ -77,7 +78,7 @@ class Face_Recognizer:
         # Reclassify after 'reclassify_interval' frames
         # If an "unknown" face is recognized, the face will be re-recognized after reclassify_interval_count counts to reclassify_interval
         self.reclassify_interval_count = 0
-        self.reclassify_interval = 5
+        self.reclassify_interval = 10
 
         ########################################################################################
         self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
@@ -88,9 +89,10 @@ class Face_Recognizer:
         self.blur_thresh = 15.0
         self.horz_direction_thresh = 10.0
         self.vert_direction_thresh = 25.0 
-        self.dimesion_thresh = 100
+        self.dimesion_thresh = 120
         self.once = True
         self.first_faces = 0
+        self.current_frame_face_display_message = []
         ########################################################################################
 
     #  Mkdir for saving photos and csv
@@ -191,7 +193,7 @@ class Face_Recognizer:
             logging.info("  Faces in Database：" + str(len(self.known_face_id_list)))
             return 1
         else:
-            logging.warning("  No Face found!")
+            logging.warning("  No Face found in directory!")
             return 0
 
     # Return 128D features for single image
@@ -413,6 +415,7 @@ class Face_Recognizer:
 
 
     def head_direction(self, image):
+        x = y = 99999
         dir_x = dir_y = 0
         try:
             x, y = self.head_pose_estimation(image)
@@ -441,77 +444,111 @@ class Face_Recognizer:
         return out, width, height
     
 
-    def face_capturer(self, image, face, phase = None, index = None):
-        if phase is not None and phase == 0 and self.first_faces > 0:  # if there is no face in database phase is 0
+
+    def face_capturer(self, image, face, current_frame_face_loop_id, phase=None, index=None):
+        # Initialize log_messages list to collect log messages
+        log_messages = []
+
+        if phase is not None and phase == 0 and self.first_faces > 0:
             self.current_frame_face_id_list.append("unknown")
-            logging.info("  self.first_faces: " + str(self.first_faces))
+            log_messages.append("  self.first_faces: " + str(self.first_faces))
             self.first_faces = self.first_faces - 1
 
         shape = predictor(image, face)
         height = (face.bottom() - face.top())
         width = (face.right() - face.left())
+
         hh = int(height / 2)
         ww = int(width / 2)
 
-        # Create blank image according to the size of face detected
-        img_blank = np.zeros((height * 2, width * 2, 3), np.uint8)
-        img_tmp = np.zeros((height, width, 3), np.uint8)
+        # Calculate once and store values
+        img_top = face.top()
+        img_left = face.left()
 
-        for ii in range(height):
-            for jj in range(width):
-                try:
-                    img_tmp[ii][jj] = image[face.top() + ii][face.left() + jj]
-                except IndexError:
-                    # logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
-                    pass
+        # Avoid using for loops for copying regions of interest
+        img_tmp = image[img_top:img_top + height, img_left:img_left + width]
+        img_blank = image[img_top - hh:img_top - hh + height * 2, img_left - ww:img_left - ww + width * 2]
 
-        for ii in range(height * 2):
-            for jj in range(width * 2):
-                try:
-                    img_blank[ii][jj] = image[face.top() - hh + ii][face.left() - ww + jj]
-                except IndexError:
-                    # logging.debug("  IndexError: index 720 is out of bounds for axis 0 with size 720!")
-                    pass
+        # Define functions to execute in parallel
+        def parallel_detect_blur_fft(img_tmp):
+            return self.detect_blur_fft(img_tmp)
 
-        # blur_index = self.blur_detection(img_tmp)
-        blur_index = self.detect_blur_fft(img_tmp)
-        close_eye_index = self.close_eye_detection(shape)
-        dir_x, dir_y, x, y = self.head_direction(img_blank)
-        dimension_index, width , height = self.image_dimension(img_tmp)
+        def parallel_close_eye_detection(shape):
+            return self.close_eye_detection(shape)
 
-        # logging.debug("  blur_detection(): " + str(blur_index))
-        logging.info("\tfft blurness: " + str(blur_index) + "  -> OK" if blur_index > self.blur_thresh else "\tfft blurness: " + str(blur_index) + " -> NOK")
-        logging.info("\tclose_eye_detection(): " + str(close_eye_index) + "  -> OK" if close_eye_index > self.eye_ar_thresh else "\tclose_eye_detection(): " + str(close_eye_index) + "  -> NOK")
-        logging.info("\tface's image width: " + str(width) + "\n\tface's image height: " + str(height))
-        logging.info("\timage's dimensions: OK" if dimension_index else "\timage's dimensions: NOK")
-        logging.info("\thorizontal index is: " + str(y) + " -> OK" if dir_y else "\thorizontal index is: " + str(y) + " -> NOK")
-        logging.info("\tvertical index is: " + str(x) + " -> OK" if dir_x else "\tvertical index is: " + str(x) + " -> NOK")
-        logging.info("\thead direction: OK" if dir_x and dir_y else "\thead direction: NOK")
+        def parallel_head_direction(img_blank):
+            return self.head_direction(img_blank)
+
+        def parallel_image_dimension(img_tmp):
+            return self.image_dimension(img_tmp)
+
+        # Create a ThreadPoolExecutor
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            # Submit function calls for parallel execution
+            blur_future = executor.submit(parallel_detect_blur_fft, img_tmp)
+            close_eye_future = executor.submit(parallel_close_eye_detection, shape)
+            head_direction_future = executor.submit(parallel_head_direction, img_blank)
+            image_dimension_future = executor.submit(parallel_image_dimension, img_tmp)
+
+            # Wait for all futures to complete
+            concurrent.futures.wait([blur_future, close_eye_future, head_direction_future, image_dimension_future])
+
+            # Retrieve results
+            blur_index = blur_future.result()
+            close_eye_index = close_eye_future.result()
+            (dir_x, dir_y, x, y) = head_direction_future.result()
+            (dimension_index, width, height) = image_dimension_future.result()
+
+        if not blur_index > self.blur_thresh:
+            self.current_frame_face_display_message[current_frame_face_loop_id] += "Face's image is blurry\n"
+
+        if not close_eye_index > self.eye_ar_thresh:
+            self.current_frame_face_display_message[current_frame_face_loop_id] += "Eye's are not open enough\n"
+
+        if not dimension_index:
+            self.current_frame_face_display_message[current_frame_face_loop_id] += "Come closer\n"
+
+        if not dir_x:
+            self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (X)\n"
+
+        if not dir_y:
+            self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (Y)\n"
+
+        if not (dir_x and dir_y):
+            log_messages.append("\thead direction: NOK")
 
         if blur_index > self.blur_thresh and close_eye_index > self.eye_ar_thresh and dir_x and dir_y and dimension_index:
+            self.current_frame_face_display_message[current_frame_face_loop_id] = "OK"
             debug_text = ""
 
             if index is None:
                 self.check_existing_faces_count()
-                current_face_dir = os.path.join(self.path_photos_from_camera , "person_" + str(self.existing_faces_count + 1))
+                current_face_dir = os.path.join(self.path_photos_from_camera, "person_" + str(self.existing_faces_count + 1))
                 os.makedirs(current_face_dir)
-                logging.info("\n%-40s %s", "Create folders:", current_face_dir)
+                log_messages.append("\n%-40s %s" % ("Create folders:", current_face_dir))
                 index = self.existing_faces_count
                 debug_text = "  Novel frame accepted and captured!"
             else:
-                current_face_dir = os.path.join(self.path_photos_from_camera , "person_" + str(index + 1))
+                current_face_dir = os.path.join(self.path_photos_from_camera, "person_" + str(index + 1))
                 debug_text = "  frame accepted and captured!"
 
-            img_name = os.path.join(str(current_face_dir) , "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg")
+            img_name = os.path.join(str(current_face_dir),
+                                    "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(
+                                        close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg")
             cv2.imwrite(img_name, img_blank)
-            logging.info("  Save into:                    " + img_name)
+            log_messages.append("  Save into:                    " + img_name)
 
             self.feature_extraction(index)
-            logging.info(debug_text)
+            log_messages.append(debug_text)
 
-        filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg"
+        filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(
+            close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg"
         filename = filename.replace('/', os.sep).replace('\\', os.sep)
-        cv2.imwrite(filename, img_tmp)  # Dump current frame image if needed
+        cv2.imwrite(filename, img_tmp)
+
+        # Combine log messages into a single string and print it
+        logging.info("\n".join(log_messages))
+
 
     def db_initialize(self):
         db_info = {
@@ -642,14 +679,32 @@ class Face_Recognizer:
     # Add explanatory text on the cv2 window
     def draw_note(self, img_rd):
         # Add some info on windows
-        cv2.putText(img_rd, "Face Recognizer with OT", (20, 40), self.font, 1, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(img_rd, "Frame:  " + str(self.frame_count), (20, 100), self.font, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.putText(img_rd, "FPS:    " + str(self.fps.__round__(2)), (20, 130), self.font, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.putText(img_rd, "Faces:  " + str(self.current_frame_face_count), (20, 160), self.font, 0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.putText(img_rd, "Q: Quit", (20, 450), self.font, 0.8, (255, 255, 255), 1, cv2.LINE_AA)
+        height, width, _ = img_rd.shape
+        relative_x = relative_y = 0.05
 
+        text_list = [
+            ("Face Recognizer", (int(relative_x * width), int(relative_y * height * 2)), (255, 255, 255)),
+            ("Frame:  " + str(self.frame_count), (int(relative_x * width), int(relative_y * height * 4)), (0, 255, 0)),
+            ("FPS:    " + str(self.fps.__round__(2)), (int(relative_x * width), int(relative_y * height * 5)), (0, 255, 0)),
+            ("Faces:  " + str(self.current_frame_face_count), (int(relative_x * width), int(relative_y * height * 6)), (0, 255, 0)),
+            ("Q: Quit", (int(relative_x * width), int(relative_y * height * 18)), (255, 255, 255))
+        ]
+
+        for i, (text, position, color) in enumerate(text_list):
+            cv2.putText(img_rd, text, position, self.font, 0.8, color, 1, cv2.LINE_AA)
+
+    def draw_status(self, img_rd):
+         # Add description about face capturing parameters
+        height, width, _ = img_rd.shape
+        relative_y = 0.05
         for i in range(len(self.current_frame_face_id_list)):
-            img_rd = cv2.putText(img_rd, "Face_" + str(i + 1), tuple([int(self.current_frame_face_centroid_list[i][0]), int(self.current_frame_face_centroid_list[i][1])]), self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
+            for j, line in enumerate(self.current_frame_face_display_message[i].split('\n')):
+                y = int(self.current_frame_face_centroid_list[i][1] + j * relative_y * height)  # Adjust line spacing as needed
+                cv2.putText(img_rd, line, (int(self.current_frame_face_centroid_list[i][0]), y), self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
+            cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+        
+        self.current_frame_face_display_message = []
+
 
     # Face detection and recognition wit OT from input video stream
     def process(self, stream):
@@ -659,6 +714,7 @@ class Face_Recognizer:
             self.frame_count += 1
             logging.info("  Frame " + str(self.frame_count) + " starts")
             flag, img_rd = stream.read()
+            img_rd = cv2.resize(img_rd, None, fx=1.4, fy=1.4)
             kk = cv2.waitKey(1)
 
             # 2. Detect faces for frame X
@@ -695,6 +751,7 @@ class Face_Recognizer:
                             self.current_frame_face_position_list.append(tuple([faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
                             self.current_frame_face_centroid_list.append([int(faces[k].left() + faces[k].right()) / 2, int(faces[k].top() + faces[k].bottom()) / 2])
                             img_rd = cv2.rectangle(img_rd, tuple([d.left(), d.top()]), tuple([d.right(), d.bottom()]), (255, 255, 255), 2)
+                            self.current_frame_face_display_message.append("")
 
                     # If there are multiple faces in the current frame, use centroid tracking
                     if self.current_frame_face_count != 1:
@@ -704,10 +761,12 @@ class Face_Recognizer:
                     logging.info("  current_frame_face_id_list len : " + str(len(self.current_frame_face_id_list)))
                     
                     # for i in range(self.current_frame_face_count):
-                    for i in range(len(self.current_frame_face_id_list)):
-                        # 6.2 Write names under ROI
-                        img_rd = cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+                    # for i in range(len(self.current_frame_face_id_list)):
+                    #     # 6.2 Write names under ROI
+                    #     cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+
                     self.draw_note(img_rd)
+                    self.draw_status(img_rd)
 
                 # 6.2 If the number of faces in the current frame and the previous frame changes
                 else:
@@ -737,6 +796,7 @@ class Face_Recognizer:
                             shape = predictor(img_rd, faces[k])
                             self.current_frame_face_centroid_list.append([int(faces[k].left() + faces[k].right()) / 2, int(faces[k].top() + faces[k].bottom()) / 2])
                             self.current_frame_face_X_e_distance_list = []
+                            self.current_frame_face_display_message.append("")
 
                             # 6.2.2.2  Positions of faces captured
                             self.current_frame_face_position_list.append(tuple([faces[k].left(), int(faces[k].bottom() + (faces[k].bottom() - faces[k].top()) / 4)]))
@@ -759,14 +819,15 @@ class Face_Recognizer:
                             if min(self.current_frame_face_X_e_distance_list) < self.similarity_thresh:
                                 self.current_frame_face_id_list[k] = self.known_face_id_list[similar_person_id]
                                 logging.info("  Face recognition result: %s", self.known_face_id_list[similar_person_id])
-                                self.face_capturer(img_rd, faces[k], index = similar_person_id)
+                                self.face_capturer(img_rd, faces[k], k, index = similar_person_id)
                             else:
                                 logging.info("  Face recognition result: Unknown person")
                                 logging.info("  K: " + str(k))
-                                self.face_capturer(img_rd, faces[k], phase = 1)
+                                self.face_capturer(img_rd, faces[k], k, phase = 1)
 
-                        # 7. Add note on cv2 window
-                        self.draw_note(img_rd)
+                    # 7. Add note on cv2 window
+                    self.draw_note(img_rd)
+                    self.draw_status(img_rd)
 
             else:
                 # Face detected
@@ -783,13 +844,14 @@ class Face_Recognizer:
                         for k, d in enumerate(faces):
                             self.current_frame_face_position_list.append(tuple([d.left(), int(d.bottom() + (d.bottom() - d.top()) / 4)]))
                             self.current_frame_face_centroid_list.append([int(d.left() + d.right()) / 2, int(d.top() + d.bottom()) / 2])
+                            self.current_frame_face_display_message.append("")
 
                     # Show the ROI of faces
                     for k, d in enumerate(faces):
                         if self.once:
                             self.first_faces = len(faces)
                             self.once = False
-                        self.face_capturer(img_rd, d, phase = 0)
+                        self.face_capturer(img_rd, d, k, phase = 0)
 
             # 8. Press 'q' to exit
             if kk == ord('q'):
@@ -797,6 +859,7 @@ class Face_Recognizer:
 
             self.update_fps()
             cv2.namedWindow("camera", 1)
+            # img_rd = cv2.resize(img_rd, None, fx=1.5, fy=1.5)
             cv2.imshow("camera", img_rd)
 
             logging.info("  Frame ends\n\n")
@@ -806,8 +869,8 @@ class Face_Recognizer:
 
         cap = cv2.VideoCapture(os.path.join('data' , 'test.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
-        # cap = cv2.VideoCapture(0)        # Get video stream from camera im windows
-        # cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)        # Get video stream from camera im windows
+        # cap = cv2.VideoCapture(0)  # Get video stream from camera im windows
+        # cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Get video stream from camera im windows
         self.process(cap)
         cap.release()
         cv2.destroyAllWindows()
