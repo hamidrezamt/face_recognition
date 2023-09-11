@@ -78,7 +78,7 @@ class Face_Recognizer:
         # Reclassify after 'reclassify_interval' frames
         # If an "unknown" face is recognized, the face will be re-recognized after reclassify_interval_count counts to reclassify_interval
         self.reclassify_interval_count = 0
-        self.reclassify_interval = 10
+        self.reclassify_interval = 5
 
         ########################################################################################
         self.path_photos_from_camera = os.path.join('data', 'data_faces_from_camera')
@@ -86,13 +86,15 @@ class Face_Recognizer:
         self.existing_faces_count = 0  # for counting saved faces
         self.similarity_thresh = 0.44
         self.eye_ar_thresh = 0.22
-        self.blur_thresh = 15.0
+        self.blur_thresh = 13.0
         self.horz_direction_thresh = 10.0
         self.vert_direction_thresh = 25.0 
         self.dimesion_thresh = 120
         self.once = True
         self.first_faces = 0
         self.current_frame_face_display_message = []
+        self.message_update_interval_count = 0
+        self.message_update_interval = 5
         ########################################################################################
 
     #  Mkdir for saving photos and csv
@@ -370,7 +372,7 @@ class Face_Recognizer:
         face_2d = []
 
         if results.multi_face_landmarks:
-            logging.info(" face also detected by face mesh")
+            logging.info("\tface also detected by face mesh")
             for face_landmarks in results.multi_face_landmarks:
                 for idx, lm in enumerate(face_landmarks.landmark):
                     if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
@@ -499,24 +501,6 @@ class Face_Recognizer:
             (dir_x, dir_y, x, y) = head_direction_future.result()
             (dimension_index, width, height) = image_dimension_future.result()
 
-        if not blur_index > self.blur_thresh:
-            self.current_frame_face_display_message[current_frame_face_loop_id] += "Face's image is blurry\n"
-
-        if not close_eye_index > self.eye_ar_thresh:
-            self.current_frame_face_display_message[current_frame_face_loop_id] += "Eye's are not open enough\n"
-
-        if not dimension_index:
-            self.current_frame_face_display_message[current_frame_face_loop_id] += "Come closer\n"
-
-        if not dir_x:
-            self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (X)\n"
-
-        if not dir_y:
-            self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (Y)\n"
-
-        if not (dir_x and dir_y):
-            log_messages.append("\thead direction: NOK")
-
         if blur_index > self.blur_thresh and close_eye_index > self.eye_ar_thresh and dir_x and dir_y and dimension_index:
             self.current_frame_face_display_message[current_frame_face_loop_id] = "OK"
             debug_text = ""
@@ -532,14 +516,40 @@ class Face_Recognizer:
                 current_face_dir = os.path.join(self.path_photos_from_camera, "person_" + str(index + 1))
                 debug_text = "  frame accepted and captured!"
 
-            img_name = os.path.join(str(current_face_dir),
-                                    "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(
-                                        close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg")
+            img_name = os.path.join(str(current_face_dir), "img_face_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg")
             cv2.imwrite(img_name, img_blank)
             log_messages.append("  Save into:                    " + img_name)
 
             self.feature_extraction(index)
             log_messages.append(debug_text)
+
+
+        elif self.message_update_interval_count >= self.message_update_interval:
+            log_messages.append("\tmessage_update_interval_count: " + str(self.message_update_interval_count))
+            log_messages.append("\tmessage_update_interval: " + str(self.message_update_interval))
+            log_messages.append("\tinside message update check")
+            self.message_update_interval_count = 0
+
+            for i in range(len(self.current_frame_face_display_message)):
+                self.current_frame_face_display_message[i] = ""
+
+            if not blur_index > self.blur_thresh:
+                self.current_frame_face_display_message[current_frame_face_loop_id] += "Face's image is blurry\n"
+
+            if not close_eye_index > self.eye_ar_thresh:
+                self.current_frame_face_display_message[current_frame_face_loop_id] += "Eye's are not open enough\n"
+
+            if not dimension_index:
+                self.current_frame_face_display_message[current_frame_face_loop_id] += "Come closer\n"
+
+            if not dir_x:
+                self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (Y)\n"
+
+            if not dir_y:
+                self.current_frame_face_display_message[current_frame_face_loop_id] += "Maintain direct eye contact (X)\n"
+
+            if not (dir_x and dir_y):
+                log_messages.append("\thead direction: NOK")
 
         filename = "debug/debug_" + str(self.frame_count) + "_" + "{:.1f}".format(blur_index) + "_" + "{:.2f}".format(
             close_eye_index) + "_" + str(dir_x) + "_" + str(dir_y) + ".jpg"
@@ -694,7 +704,7 @@ class Face_Recognizer:
             cv2.putText(img_rd, text, position, self.font, 0.8, color, 1, cv2.LINE_AA)
 
     def draw_status(self, img_rd):
-         # Add description about face capturing parameters
+        # Add description about face capturing parameters
         height, width, _ = img_rd.shape
         relative_y = 0.05
         for i in range(len(self.current_frame_face_id_list)):
@@ -702,8 +712,6 @@ class Face_Recognizer:
                 y = int(self.current_frame_face_centroid_list[i][1] + j * relative_y * height)  # Adjust line spacing as needed
                 cv2.putText(img_rd, line, (int(self.current_frame_face_centroid_list[i][0]), y), self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
             cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
-        
-        self.current_frame_face_display_message = []
 
 
     # Face detection and recognition wit OT from input video stream
@@ -745,6 +753,9 @@ class Face_Recognizer:
 
                     logging.info("  Start reclassify_interval_count counting")
                     self.reclassify_interval_count += 1
+                    logging.info("  Start message_update_interval_count counting")
+                    self.message_update_interval_count += 1
+                    logging.info("\tmessage_update_interval_count: " + str(self.message_update_interval_count))
 
                     if self.current_frame_face_count != 0:
                         for k, d in enumerate(faces):
@@ -765,8 +776,8 @@ class Face_Recognizer:
                     #     # 6.2 Write names under ROI
                     #     cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
 
-                    self.draw_note(img_rd)
                     self.draw_status(img_rd)
+                    self.draw_note(img_rd)
 
                 # 6.2 If the number of faces in the current frame and the previous frame changes
                 else:
@@ -775,6 +786,7 @@ class Face_Recognizer:
                     self.current_frame_face_X_e_distance_list = []
                     self.current_frame_face_feature_list = []
                     self.reclassify_interval_count = 0
+                    # self.message_update_interval_count = 0
 
                     # 6.2.1 If the number of faces Reduced
                     if self.current_frame_face_count == 0:
@@ -826,8 +838,8 @@ class Face_Recognizer:
                                 self.face_capturer(img_rd, faces[k], k, phase = 1)
 
                     # 7. Add note on cv2 window
-                    self.draw_note(img_rd)
                     self.draw_status(img_rd)
+                    self.draw_note(img_rd)
 
             else:
                 # Face detected
@@ -835,14 +847,18 @@ class Face_Recognizer:
                 #  Update the list of centroids for the previous frame and the current frame
                 self.last_frame_face_centroid_list = self.current_frame_face_centroid_list
                 self.current_frame_face_centroid_list = []
+                self.current_frame_face_position_list = []
+
                 if len(faces) != 0:
                     # Create folders to save photos
                     self.pre_work_mkdir()
                     self.last_frame_face_count = self.current_frame_face_count
                     self.current_frame_face_count = len(faces)
+                    self.message_update_interval_count += 1
                     if self.current_frame_face_count != 0:
                         for k, d in enumerate(faces):
                             self.current_frame_face_position_list.append(tuple([d.left(), int(d.bottom() + (d.bottom() - d.top()) / 4)]))
+                            logging.info("\tcurrent_frame_face_position_list: " + str(self.current_frame_face_position_list))
                             self.current_frame_face_centroid_list.append([int(d.left() + d.right()) / 2, int(d.top() + d.bottom()) / 2])
                             self.current_frame_face_display_message.append("")
 
@@ -851,7 +867,12 @@ class Face_Recognizer:
                         if self.once:
                             self.first_faces = len(faces)
                             self.once = False
+                        # logging.info("\tbefore face_capturer")
                         self.face_capturer(img_rd, d, k, phase = 0)
+                        img_rd = cv2.rectangle(img_rd, tuple([d.left(), d.top()]), tuple([d.right(), d.bottom()]), (255, 255, 255), 2)
+
+                    self.draw_status(img_rd)
+                self.draw_note(img_rd)
 
             # 8. Press 'q' to exit
             if kk == ord('q'):
