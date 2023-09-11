@@ -691,6 +691,10 @@ class Face_Recognizer:
         # Add some info on windows
         height, width, _ = img_rd.shape
         relative_x = relative_y = 0.05
+        font_scale_percent = 0.08  # Adjust this percentage as needed
+        font_scale = (width * font_scale_percent) / 100
+        logging.info("\tfont_scale: " + str(font_scale))
+
 
         text_list = [
             ("Face Recognizer", (int(relative_x * width), int(relative_y * height * 2)), (255, 255, 255)),
@@ -701,17 +705,19 @@ class Face_Recognizer:
         ]
 
         for i, (text, position, color) in enumerate(text_list):
-            cv2.putText(img_rd, text, position, self.font, 0.8, color, 1, cv2.LINE_AA)
+            cv2.putText(img_rd, text, position, self.font, font_scale, color, 1, cv2.LINE_AA)
 
     def draw_status(self, img_rd):
         # Add description about face capturing parameters
         height, width, _ = img_rd.shape
         relative_y = 0.05
+        font_scale_percent = 0.08  # Adjust this percentage as needed
+        font_scale = (width * font_scale_percent) / 100
         for i in range(len(self.current_frame_face_id_list)):
             for j, line in enumerate(self.current_frame_face_display_message[i].split('\n')):
                 y = int(self.current_frame_face_centroid_list[i][1] + j * relative_y * height)  # Adjust line spacing as needed
-                cv2.putText(img_rd, line, (int(self.current_frame_face_centroid_list[i][0]), y), self.font, 0.8, (255, 190, 0), 1, cv2.LINE_AA)
-            cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, 0.8, (0, 255, 255), 1, cv2.LINE_AA)
+                cv2.putText(img_rd, line, (int(self.current_frame_face_centroid_list[i][0]), y), self.font, font_scale, (255, 190, 0), 1, cv2.LINE_AA)
+            cv2.putText(img_rd, self.current_frame_face_id_list[i], self.current_frame_face_position_list[i], self.font, font_scale, (0, 255, 255), 1, cv2.LINE_AA)
 
 
     # Face detection and recognition wit OT from input video stream
