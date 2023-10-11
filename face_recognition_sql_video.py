@@ -20,14 +20,14 @@ import concurrent.futures
 detector = dlib.get_frontal_face_detector()
 
 # Get face landmarks
-shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
-predictor = dlib.shape_predictor(shape_predictor_path)
-# predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
+# shape_predictor_path = os.path.join('data', 'data_dlib', 'shape_predictor_68_face_landmarks.dat')
+# predictor = dlib.shape_predictor(shape_predictor_path)
+predictor = dlib.shape_predictor('shape_predictor_68_face_landmarks.dat')
 
 # Use Dlib resnet50 model to get 128D face descriptor
-face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
-face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
-# face_reco_model = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
+# face_reco_model_path = os.path.join('data', 'data_dlib', 'dlib_face_recognition_resnet_model_v1.dat')
+# face_reco_model = dlib.face_recognition_model_v1(face_reco_model_path)
+face_reco_model = dlib.face_recognition_model_v1("dlib_face_recognition_resnet_model_v1.dat")
 
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -112,8 +112,7 @@ class Face_Recognizer:
     
     def db_conn(self):
         # Create a connection object
-        # connection_params = { "host": "localhost", "user": "root", "password": "user", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
-        connection_params = { "host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
+        connection_params = { "host": "localhost", "user": "root", "password": "user", "db": "dlib_face", "charset": "utf8mb4", "cursorclass": pymysql.cursors.DictCursor }
         database = pymysql.connect(**connection_params)
         cursor = database.cursor()
         return cursor,database
@@ -552,8 +551,13 @@ class Face_Recognizer:
 
 
     def db_initialize(self):
-        # db_info = {"host": "localhost", "user": "root", "password": "user", "db": "dlib_face", "charset": "utf8mb4"}
-        db_info = {"host": "localhost", "user": "hamidreza", "password": "@123HrmZ123$", "db": "dlib_face", "charset": "utf8mb4"}
+        db_info = {
+            "host": "localhost",
+            "user": "root",
+            "password": "user",
+            "db": "dlib_face",
+            "charset": "utf8mb4"
+            }
 
         # create a connection to the MySQL server
         conn_init = pymysql.connect(
@@ -869,7 +873,7 @@ class Face_Recognizer:
     def run(self):
         # logging.debug(" mp_face_mesh: " + str(mp_face_mesh))
 
-        cap = cv2.VideoCapture(os.path.join('data' , 'test2.mp4'))  # Get video stream from video file
+        cap = cv2.VideoCapture(os.path.join('data' , 'test.mp4'))  # Get video stream from video file
         # cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # Get video stream from camera im mac
         # cap = cv2.VideoCapture(0)  # Get video stream from camera im windows
         # cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Get video stream from camera im windows
